@@ -25,12 +25,18 @@ const DashboardLayout: React.FC = () => {
     { path: '/docs', label: 'Documentation', icon: <FileText size={20} /> },
   ];
 
-  // Check if the current path starts with the nav item path
+  // Check if the current path matches the nav item path
   const isActiveRoute = (path: string) => {
     if (path === '/') {
       return location.pathname === '/';
     }
-    return location.pathname.startsWith(path);
+    
+    // For exact match instead of startsWith
+    return location.pathname === path || 
+      // Special case for /bots/:id route
+      (path === '/bots' && location.pathname.startsWith('/bots/')) ||
+      // Special case for /analytics/:botId route
+      (path === '/analytics' && location.pathname.startsWith('/analytics/'));
   };
 
   return (
