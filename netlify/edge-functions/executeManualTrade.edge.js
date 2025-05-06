@@ -40,6 +40,51 @@ function formatSymbolForBybit(symbol) {
   return symbol;
 }
 
+// Helper function to fetch instrument info from Bybit API
+async function fetchInstrumentInfo(symbol, category = 'linear') {
+  try {
+    const response = await fetch(
+      `${MAINNET_URL}/v5/market/instruments-info?symbol=${symbol}&category=${category}`
+    );
+    
+    const data = await response.json();
+    if (data.retCode !== 0 || !data.result || !data.result.list || data.result.list.length === 0) {
+      throw new Error(`Failed to fetch instrument info: ${data.retMsg || 'No data returned'}`);
+    }
+    
+    return data.result.list[0];
+  } catch (error) {
+    console.error(`Error fetching instrument info for ${symbol}:`, error);
+    throw error;
+  }
+}
+
+// Helper function to adjust quantity based on min and step
+function adjustQuantity(quantity, minQty, qtyStep, decimals) {
+  console.log(`Adjusting quantity: original=${quantity}, minQty=${minQty}, qtyStep=${qtyStep}, decimals=${decimals}`);
+  
+  // Convert to numbers if they're strings
+  const qtyNum = typeof quantity === 'string' ? parseFloat(quantity) : quantity;
+  const minQtyNum = typeof minQty === 'string' ? parseFloat(minQty) : minQty;
+  const qtyStepNum = typeof qtyStep === 'string' ? parseFloat(qtyStep) : qtyStep;
+  
+  // Check if we need to use minQty
+  if (qtyNum < minQtyNum) {
+    console.log(`Quantity ${qtyNum} is below minimum ${minQtyNum}, using minimum quantity`);
+    return minQtyNum;
+  }
+  
+  // Round down to the nearest step
+  const stepsCount = Math.floor(qtyNum / qtyStepNum);
+  const adjustedQty = stepsCount * qtyStepNum;
+  
+  // Apply precision
+  const finalQty = parseFloat(adjustedQty.toFixed(decimals));
+  
+  console.log(`Adjusted quantity: ${qtyNum} -> ${finalQty}`);
+  return finalQty;
+}
+
 export default async function handler(request, context) {
   console.log("Edge Function: executeManualTrade started");
   
@@ -197,14 +242,43 @@ export default async function handler(request, context) {
         const formattedSymbol = formatSymbolForBybit(symbol);
         console.log(`Using formatted symbol for API call: ${formattedSymbol} (original: ${symbol})`);
         
-        // Prepare order parameters
+        // Determine the category based on the symbol
+        const category = symbol.endsWith('PERP') ? 'linear' : 'linear';
+        
+        // Fetch instrument info to get min quantity and step size
+        console.log(`Fetching instrument info for ${formattedSymbol} in category ${category}`);
+        const instrumentInfo = await fetchInstrumentInfo(formattedSymbol, category);
+        
+        console.log(`Instrument info received:`, instrumentInfo);
+        
+        // Extract lot size filter for min qty and step size
+        const lotFilter = instrumentInfo.lotSizeFilter;
+        const minQtyStr = lotFilter.minOrderQty ?? lotFilter.minTrdAmt ?? "0.001";
+        const stepStr = lotFilter.qtyStep ?? lotFilter.stepSize ?? "0.001";
+        
+        // Determine decimals from step size
+        const decimals = stepStr.includes('.') ? stepStr.split('.')[1].length : 0;
+        
+        console.log(`Min qty: ${minQtyStr}, Step size: ${stepStr}, Decimals: ${decimals}`);
+        
+        // Adjust quantity to comply with exchange requirements
+        const adjustedQuantity = adjustQuantity(quantity, minQtyStr, stepStr, decimals);
+        
+        // Check if adjusted quantity is valid
+        if (adjustedQuantity <= 0) {
+          throw new Error(`Adjusted quantity ${adjustedQuantity} is invalid. Please increase your order size.`);
+        }
+        
+        console.log(`Original quantity: ${quantity}, Adjusted quantity: ${adjustedQuantity}`);
+        
+        // Prepare order parameters with adjusted quantity
         const orderParams = {
           apiKey: apiKey.api_key,
           apiSecret: apiKey.api_secret,
           symbol: formattedSymbol,
           side,
           orderType: order_type,
-          quantity,
+          quantity: adjustedQuantity.toString(), // Use adjusted quantity
           price: entry_price,
           stopLoss: stop_loss,
           takeProfit: take_profit,
@@ -280,7 +354,7 @@ export default async function handler(request, context) {
       symbol,
       side,
       entry_price: parseFloat(entry_price),
-      quantity: parseFloat(quantity),
+      quantity: parseFloat(orderResult ? orderResult.qty : quantity),
       stop_loss: stop_loss ? parseFloat(stop_loss) : null,
       take_profit: take_profit ? parseFloat(take_profit) : null,
       max_risk: max_risk ? parseFloat(max_risk) : null,
@@ -343,7 +417,7 @@ export default async function handler(request, context) {
         trade_id: insertedTrade.id,
         symbol,
         side,
-        quantity
+        quantity: orderResult ? orderResult.qty : quantity
       },
       user_id,
       insertedTrade.id
@@ -354,7 +428,8 @@ export default async function handler(request, context) {
         success: true,
         message: "Trade executed and saved successfully",
         tradeId: insertedTrade.id,
-        orderId: orderResult?.orderId
+        orderId: orderResult?.orderId,
+        adjustedQuantity: orderResult ? orderResult.qty : quantity
       }),
       {
         status: 200,
