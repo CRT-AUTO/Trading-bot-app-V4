@@ -190,9 +190,10 @@ export default async function handler(request, context) {
       apiKeyQuery = apiKeyQuery.eq('is_default', true);
     }
     
-    const { data: apiKey, error: apiKeyError } = await apiKeyQuery.single();
+    let apiKey;
+    const { data: apiKeyData, error: apiKeyError } = await apiKeyQuery.single();
     
-    if (apiKeyError || !apiKey) {
+    if (apiKeyError || !apiKeyData) {
       // If no specific key or default key found, try fetching any key
       const { data: fallbackKey, error: fallbackError } = await supabase
         .from('api_keys')
@@ -230,7 +231,8 @@ export default async function handler(request, context) {
       console.log(`Using fallback API key: ${fallbackKey.name}`);
       apiKey = fallbackKey;
     } else {
-      console.log(`Using API key: ${apiKey.name}`);
+      console.log(`Using API key: ${apiKeyData.name}`);
+      apiKey = apiKeyData;
     }
 
     let orderResult = null;
@@ -280,8 +282,8 @@ export default async function handler(request, context) {
           orderType: order_type,
           quantity: adjustedQuantity.toString(), // Use adjusted quantity
           price: entry_price,
-          stopLoss: stop_loss,
-          takeProfit: take_profit,
+          stopLoss: stop_loss, // Include stop loss
+          takeProfit: take_profit, // Include take profit
           testnet: false  // Using real trading for manual trades
         };
         
