@@ -300,9 +300,10 @@ export default async function handler(request, context) {
       apiKeyQuery = apiKeyQuery.eq('is_default', true);
     }
     
-    const { data: apiKey, error: apiKeyError } = await apiKeyQuery.single();
+    let apiKey;
+    const { data: apiKeyData, error: apiKeyError } = await apiKeyQuery.single();
     
-    if (apiKeyError || !apiKey) {
+    if (apiKeyError || !apiKeyData) {
       // If no specific key or default key found, try fetching any key
       const { data: fallbackKey, error: fallbackError } = await supabase
         .from('api_keys')
@@ -341,7 +342,8 @@ export default async function handler(request, context) {
       console.log(`Using fallback API key: ${fallbackKey.name}`);
       apiKey = fallbackKey;
     } else {
-      console.log(`Using API key: ${apiKey.name} (${apiKey.account_type})`);
+      console.log(`Using API key: ${apiKeyData.name} (${apiKeyData.account_type})`);
+      apiKey = apiKeyData;
     }
     
     // Prepare to call Bybit API for closed PnL
