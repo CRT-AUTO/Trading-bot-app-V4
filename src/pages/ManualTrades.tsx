@@ -32,16 +32,18 @@ const ManualTrades: React.FC = () => {
     setError(null);
     
     try {
+      // Format symbol for Bybit API (remove PERP suffix)
+      const formattedSymbol = symbol.endsWith('PERP') 
+        ? symbol.replace('PERP', '')
+        : symbol;
+      
       // Handle both spot and perpetual symbols
       const category = symbol.endsWith('PERP') ? 'linear' : 'spot';
       
-      // For perpetual symbols, we need to format them correctly for the API
-      const apiSymbol = symbol.endsWith('PERP') 
-        ? symbol.replace('PERP', '') 
-        : symbol;
+      console.log(`Fetching price for ${formattedSymbol} in category ${category}`);
       
       // Using the orderbook API endpoint from Bybit
-      const response = await fetch(`https://api.bybit.com/v5/market/orderbook?category=${category}&symbol=${apiSymbol}&limit=1`);
+      const response = await fetch(`https://api.bybit.com/v5/market/orderbook?category=${category}&symbol=${formattedSymbol}&limit=1`);
       const data = await response.json();
       
       if (data.retCode === 0 && data.result && data.result.a && data.result.a.length > 0) {
