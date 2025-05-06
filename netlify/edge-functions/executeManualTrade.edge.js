@@ -31,6 +31,15 @@ async function logEvent(supabase, level, message, details, userId = null, tradeI
   }
 }
 
+// Helper function to format symbol for Bybit API
+function formatSymbolForBybit(symbol) {
+  // Remove the "PERP" suffix if it exists
+  if (symbol.endsWith('PERP')) {
+    return symbol.replace('PERP', '');
+  }
+  return symbol;
+}
+
 export default async function handler(request, context) {
   console.log("Edge Function: executeManualTrade started");
   
@@ -184,11 +193,15 @@ export default async function handler(request, context) {
     // Execute the order on Bybit if not in test mode
     if (!test_mode) {
       try {
+        // Format symbol for Bybit API
+        const formattedSymbol = formatSymbolForBybit(symbol);
+        console.log(`Using formatted symbol for API call: ${formattedSymbol} (original: ${symbol})`);
+        
         // Prepare order parameters
         const orderParams = {
           apiKey: apiKey.api_key,
           apiSecret: apiKey.api_secret,
-          symbol,
+          symbol: formattedSymbol,
           side,
           orderType: order_type,
           quantity,
@@ -216,7 +229,7 @@ export default async function handler(request, context) {
           { 
             order: {
               ...orderResult,
-              symbol,
+              symbol: formattedSymbol,
               side
             }
           },
