@@ -39,9 +39,21 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Helper function to format symbol for Bybit API
+function formatSymbolForBybit(symbol) {
+  // Remove the "PERP" suffix if it exists
+  if (symbol.endsWith('PERP')) {
+    return symbol.replace('PERP', '');
+  }
+  return symbol;
+}
+
 // Helper function to find the best matching PnL record
 function findBestMatchingPnl(trade, closedPnlList) {
-  console.log(`Finding best PnL match for trade: Symbol=${trade.symbol}, Side=${trade.side}, Qty=${trade.quantity}, OrderID=${trade.order_id || 'N/A'}`);
+  // Format the symbol to match Bybit API format
+  const formattedSymbol = formatSymbolForBybit(trade.symbol);
+  
+  console.log(`Finding best PnL match for trade: Symbol=${trade.symbol} (formatted as ${formattedSymbol}), Side=${trade.side}, Qty=${trade.quantity}, OrderID=${trade.order_id || 'N/A'}`);
   
   // First try exact orderId match if available
   if (trade.order_id) {
@@ -55,8 +67,8 @@ function findBestMatchingPnl(trade, closedPnlList) {
   console.log(`No exact order ID match found, trying alternative matching methods...`);
   
   // Filter by symbol
-  const symbolMatches = closedPnlList.filter(pnl => pnl.symbol === trade.symbol);
-  console.log(`Found ${symbolMatches.length} trades with matching symbol: ${trade.symbol}`);
+  const symbolMatches = closedPnlList.filter(pnl => pnl.symbol === formattedSymbol);
+  console.log(`Found ${symbolMatches.length} trades with matching symbol: ${formattedSymbol}`);
   
   if (symbolMatches.length === 0) return { match: null, matchType: 'no_symbol_match' };
   
@@ -358,10 +370,14 @@ export default async function handler(request, context) {
           End time: ${new Date(endTime).toISOString()}`
         );
         
+        // Format symbol for Bybit API
+        const formattedSymbol = formatSymbolForBybit(trade.symbol);
+        console.log(`Using formatted symbol for API call: ${formattedSymbol} (original: ${trade.symbol})`);
+        
         // Parameters for Bybit API call
         const params = new URLSearchParams({
           category: 'linear',
-          symbol: trade.symbol,
+          symbol: formattedSymbol,
           limit: '200',  // Increased limit to find more potential matches
           startTime: startTime.toString(),
           endTime: endTime.toString(),
@@ -437,7 +453,7 @@ export default async function handler(request, context) {
           'Bybit closed PnL API response',
           { 
             side: trade.side,
-            symbol: trade.symbol,
+            symbol: formattedSymbol,
             order_id: trade.order_id,
             trade_id: tradeId,
             bybit_response: data
